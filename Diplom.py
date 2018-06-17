@@ -8,11 +8,18 @@ API = "https://api.vk.com/method/"
 
 
 def get_vk_data(api, method, params):
-    response = requests.get(
-        "{}{}".format(api, method),
-        params=params
-    )
-    return response.json()
+    while True:
+        response = requests.get(f"{api}{method}", params=params).json()
+        if 'response' in response:
+            return response
+        else:
+            error = response['error']['error_code']
+            if error == 6:
+                time.sleep(3)
+                continue
+            else:
+                print(f"Ошибка {response['error']['error_msg']}")
+                return response
 
 
 def fined_groups(params, id):
@@ -34,18 +41,16 @@ def fined_friends(params, id):
 
 
 def get_result_groups(params, friends, groups):
-    i = 1
     groups_id = [gr["id"] for gr in groups]
-    for friend in friends:
+    for i, friend in enumerate(friends):
         try:
             friend_groups = fined_groups(params, friend)
         except KeyError:
+            # сообщение об ошибке выводится функцией get_vk_data()
             pass
-        time.sleep(0.35)
         print(f"Осталось обработать {len(friends)-i} друзей")
         friend_groups_id = [gr["id"] for gr in friend_groups]
         groups_id = set(groups_id) - set(friend_groups_id)
-        i += 1
     return groups_id
 
 
