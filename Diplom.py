@@ -9,17 +9,19 @@ API = "https://api.vk.com/method/"
 
 def get_vk_data(api, method, params):
     while True:
-        response = requests.get(f"{api}{method}", params=params).json()
-        if 'response' in response:
-            return response
-        else:
-            error = response['error']['error_code']
+        try:
+            response = requests.get(f"{api}{method}", params=params)
+            response.raise_for_status()
+            response = response.json()
+            return response["response"]
+        except Exception:
+            error = response["error"]["error_code"]
             if error == 6:
                 time.sleep(3)
                 continue
             else:
-                print(f"Ошибка {response['error']['error_msg']}")
-                return response
+                print(f'Ошибка {response["error"]["error_msg"]}')
+                return dict({"items":""})
 
 
 def fined_groups(params, id):
@@ -29,29 +31,27 @@ def fined_groups(params, id):
         count=1000,
         extended=1
     ))
-    groups = get_vk_data(API, "groups.get", params)["response"]["items"]
+    groups = get_vk_data(API, "groups.get", params)["items"]
     return groups
 
 
 def fined_friends(params, id):
     params.update(user_id=id)
-    friends = get_vk_data(API, "friends.get", params)["response"]["items"]
+    friends = get_vk_data(API, "friends.get", params)["items"]
     activated_friends = [i["id"] for i in friends if "deactivated" not in i]
     return activated_friends
 
 
 def get_result_groups(params, friends, groups):
+    all_friends_groups = set()
     groups_id = [gr["id"] for gr in groups]
     for i, friend in enumerate(friends):
-        try:
-            friend_groups = fined_groups(params, friend)
-        except KeyError:
-            # сообщение об ошибке выводится функцией get_vk_data()
-            pass
+        friend_groups = fined_groups(params, friend)
         print(f"Осталось обработать {len(friends)-i} друзей")
         friend_groups_id = [gr["id"] for gr in friend_groups]
-        groups_id = set(groups_id) - set(friend_groups_id)
-    return groups_id
+        all_friends_groups = all_friends_groups.union(friend_groups_id)
+    groups_result = set(groups_id).difference(all_friends_groups)
+    return groups_result
 
 
 def user_name(params):
@@ -60,7 +60,7 @@ def user_name(params):
         user_id = user
     else:
         params.update(screen_name=user)
-        user_id = get_vk_data(API, "utils.resolveScreenName", params)["response"]["object_id"]
+        user_id = get_vk_data(API, "utils.resolveScreenName", params)["object_id"]
     return user_id
 
 
@@ -74,11 +74,11 @@ def main():
     user_id = user_name(params)
     groups = fined_groups(params, user_id)
     friends = fined_friends(params, user_id)
-    groups_id = get_result_groups(params, friends, groups)
+    groups_result = get_result_groups(params, friends, groups)
 
     result = []
     for gr in groups:
-        if gr["id"] in groups_id:
+        if gr["id"] in groups_result:
             result.append({k: v for k, v in gr.items() if (k in ("name", "id", "members_count"))})
     save_result_json(result)
     print("Результат сохранен в файле groups.json")
